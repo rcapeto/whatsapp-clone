@@ -136,7 +136,7 @@ class WhatsAppController {
       this.el.formPanelAddContact.on('submit', e => {
          e.preventDefault();
 
-         
+         const data = this.el.formPanelAddContact.toJSON();
          
       });
    }
