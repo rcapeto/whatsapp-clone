@@ -68,5 +68,7 @@ class WhatsAppController {
       Element.prototype.hasClass = function(name) {
          return this.classList.contains(name);
       }
+
+      console.log('teste');
    }
 }
