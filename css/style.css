@@ -16146,3 +16146,7 @@ div #img-panel-document-preview {
     width: 450px;
     height: 450px;
 }
+
+#panel-messages-container {
+    padding-top: 20px;
+}
