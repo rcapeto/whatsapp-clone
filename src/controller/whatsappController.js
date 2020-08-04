@@ -6,6 +6,8 @@ import Firebase from '../util/firebase';
 import User from '../model/user';
 import Chat from '../model/chat';
 import Message from '../model/message';
+import Base64 from '../util/base64';
+import ContactsController from './contactscontroller';
 
 export default class WhatsAppController {
    constructor() {
@@ -176,10 +178,13 @@ export default class WhatsAppController {
 
             const me = (data.from === this._user.email);
             
+            message.fromJSON(data);
+            
+            const view = message.getViewElement(me);
+
             if(!this.el.panelMessagesContainer.querySelector(`#_${data.id}`)) {
                
 
-               message.fromJSON(data);
 
 
                if(!me) {
@@ -188,7 +193,6 @@ export default class WhatsAppController {
                   }, { merge: true });
                }
 
-               const view = message.getViewElement(me);
 
                this.el.panelMessagesContainer.appendChild(view);
 
@@ -199,9 +203,36 @@ export default class WhatsAppController {
                } else {
                   this.el.panelMessagesContainer.scrollTop = scrollTop;
                }
-            } else if(me){
+            } else {
+
+               let parent =  this.el.panelMessagesContainer.querySelector('#_' + data.id).parentNode;
+
+               parent.replaceChild(
+                  view,
+                  this.el.panelMessagesContainer.querySelector('#_' + data.id)
+               );
+            }
+            
+            if(this.el.panelMessagesContainer.querySelector('#_'+ data.id) && me){
                let msgEl = this.el.panelMessagesContainer.querySelector(`#_${data.id}`);
                msgEl.querySelector('.message-status').innerHTML = message.getStatusViewElement().outerHTML;
+            }
+            
+            if(message.type === 'contact') {
+               view.querySelector('.btn-message-send').on('click', () => {
+                  Chat.createIfNotExists(this._user.email, message.content.email).then(chat => {
+                     const contact = new User(message.content.email);
+
+                     contact.on('datachange', data => {
+                        contact.chatId = chat.id;
+                        this._user.chatId = chat.id;
+
+                        contact.addContact(this._user);
+
+                        this._user.addContact(contact).then(() => console.log('Adicionado com sucesso'));
+                     });
+                  });
+               });
             }
          });
       });
@@ -404,7 +435,11 @@ export default class WhatsAppController {
 
       this.el.inputPhoto.on('change', e => {
          [...this.el.inputPhoto.files].forEach(file => {
-            console.log(file);
+            Message.sendImage(
+               this._contactActive.chatId,
+               this._user.email,
+               file,
+               );
          });
       });
 
@@ -466,7 +501,43 @@ export default class WhatsAppController {
       this.el.btnSendPicture.on('click', e => {
          this._camera.stop();
 
-         console.log(this.el.pictureCamera.src);
+         this.el.btnSendPicture.disabled = true;
+
+         const regex = /^data:(.+);base64,(.*)$/;
+         const result = this.el.pictureCamera.src.match(regex);
+         const mimeType = result[1];
+         const extension = mimeType.split('/')[1];
+         const filename = `camera${Date.now()}.${extension}`;
+         const picture = new Image();
+         picture.src = this.el.pictureCamera.src;
+
+         picture.onload = e => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+
+            canvas.setAttribute('width', picture.width);
+            canvas.setAttribute('height', picture.height);
+
+            context.translate(picture.width, 0);
+            context.scale(-1, 1);
+
+            context.drawImage(picture, 0, 0, canvas.width, canvas.height);
+
+            fetch(canvas.toDataURL(mimeType)).then(response => {
+               return response.arrayBuffer();
+   
+            }).then(buffer => {
+               return new File([buffer], filename, { type: mimeType});
+   
+            }).then(file => {
+               Message.sendImage(this._contactActive.chatId, this._user.email, file);
+   
+               this.el.btnSendPicture.disabled = false;
+
+               this.closeAllMainPanel();
+               this.el.panelMessagesContainer.show();
+            });
+         }
       });
 
       this.el.btnAttachDocument.on('click', e => {
@@ -540,15 +611,48 @@ export default class WhatsAppController {
       });
 
       this.el.btnSendDocument.on('click', e => {
-         console.log('send document');
+         const file = this.el.inputDocument.files[0];
+         const preview = this.el.imgPanelDocumentPreview.src;
+
+         if(file.type === 'application/pdf') {
+            Base64.toFile(preview).then(filePreview => {
+               Message.sendDocument(
+                  this._contactActive.chatId,
+                  this._user.email,
+                  file,
+                  filePreview,
+                  this.el.infoPanelDocumentPreview.innerHTML,
+               );
+            });
+
+         } else {
+            Message.sendDocument(
+               this._contactActive.chatId,
+               this._user.email,
+               file,
+            );
+         }
+
+         this.el.btnClosePanelDocumentPreview.click();
+
       });
 
       this.el.btnAttachContact.on('click', e => {
-         this.el.modalContacts.show();
+         this._contactsController = new ContactsController(this.el.modalContacts, this._user);
+
+         this._contactsController.on('select', contact => {
+            Message.sendContact(
+               this._contactActive.chatId,
+               this._user.email,
+               contact
+               );
+         });
+
+         this._contactsController.open();
       });
 
       this.el.btnCloseModalContacts.on('click', e => {
-         this.el.modalContacts.hide();
+         this._contactsController.close();
       });
 
       this.el.btnSendMicrophone.on('click', e => {

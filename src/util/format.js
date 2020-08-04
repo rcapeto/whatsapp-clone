@@ -32,4 +32,31 @@ export default class Format {
          minute: '2-digit'
       });
    }
+
+   static getType(type) {
+      let fileType = '';
+
+      switch(type) {
+         case 'application/pdf':
+            fileType = 'PDF';
+            break;
+         case 'application/vnd.ms-excel':
+         case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            fileType = 'Excel'   
+            break;
+         case 'application/vnd.ms-powerpoint':
+         case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+            fileType = 'PowerPoint';
+            break;
+         case 'application/msword':
+         case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            fileType = 'Word'
+            break;
+         default:
+            fileType = type;
+
+      }
+
+      return fileType;
+   }
 }
