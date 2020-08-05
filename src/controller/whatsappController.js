@@ -13,6 +13,8 @@ export default class WhatsAppController {
    constructor() {
       this._firebase = new Firebase();
 
+      this._active = true;
+
       this.initAuth();
 
       this.elementsPrototype();
@@ -20,6 +22,45 @@ export default class WhatsAppController {
       this.loadElements();
 
       this.initEvents();
+
+      this.checkNotifications();
+   }
+
+   notification(data) {
+      if(Notification.permission === 'granted' && !this._active) {
+         const notificationMessage = new Notification(this._contactActive.name, {
+            icon: this._contactActive.photo,
+            body: data.content
+         });
+
+         const messageSound = new Audio('./audio/alert.mp3');
+         messageSound.currentTime = 0;
+         messageSound.play();
+
+         setTimeout(() => {
+            if(notificationMessage) notificationMessage.close();
+
+         }, 3000);
+      }
+   }
+
+   checkNotifications() {
+      if(typeof Notification === 'function') {
+         if(Notification.permission !== 'granted') {
+            this.el.alertNotificationPermission.show();
+         } else {
+            this.el.alertNotificationPermission.hide();
+         }
+
+         this.el.alertNotificationPermission.on('click', e => {
+            Notification.requestPermission(permission => {
+               if(permission === 'granted') {
+                  this.el.alertNotificationPermission.hide();
+                  console.info('notificações permitidas');
+               }
+            });
+         });
+      }
    }
 
    initAuth() {
@@ -94,7 +135,7 @@ export default class WhatsAppController {
                            <span dir="auto" title="${contact.name}" class="_1wjpf">${contact.name}</span>
                      </div>
                      <div class="_3Bxar">
-                           <span class="_3T2VG">${contact.lastMessageTime}</span>
+                           <span class="_3T2VG"></span>
                      </div>
                   </div>
                   <div class="_1AwDx">
@@ -103,13 +144,9 @@ export default class WhatsAppController {
       
                            <span class="_2_LEW last-message">
                               <div class="_1VfKB">
-                                 <span data-icon="status-dblcheck" class="">
-                                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
-                                          <path fill="#263238" fill-opacity=".4" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609zm-4.892 0l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-2.614-2.556a.435.435 0 0 0-.614.007l-.505.516a.435.435 0 0 0 .007.614l3.887 3.8a.38.38 0 0 0 .577-.039l7.483-9.602a.435.435 0 0 0-.075-.609z"></path>
-                                       </svg>
-                                 </span>
+                                 
                               </div>
-                              <span dir="ltr" class="_1wjpf _3NFp9">${contact.lastMessage}</span>
+                              <span dir="ltr" class="_1wjpf _3NFp9"></span>
                               <div class="_3Bxar">
                                  <span>
                                        <div class="_15G96">
@@ -147,7 +184,7 @@ export default class WhatsAppController {
       this._contactActive = contact;
 
       this.el.activeName.innerHTML = contact.name;
-      this.el.activeStatus.innerHTML = contact.status;
+      this.el.activeStatus.innerHTML = '';
 
       if(contact.photo) {
          let photo = this.el.activePhoto;
@@ -163,6 +200,9 @@ export default class WhatsAppController {
 
       this.el.main.css({ display: 'flex' });
 
+      this._messagesReceived = [];
+
+
       Message.getRef(this._contactActive.chatId).orderBy('timeStamp').onSnapshot(docs => {
          this.el.panelMessagesContainer.innerHTML = '';
 
@@ -177,16 +217,19 @@ export default class WhatsAppController {
             const message = new Message();
 
             const me = (data.from === this._user.email);
-            
+
             message.fromJSON(data);
-            
+
+            if(!me && this._messagesReceived.filter(id => id === data.id).length === 0) {
+               this.notification(data);
+
+               this._messagesReceived.push(data.id);
+            };
+
             const view = message.getViewElement(me);
 
             if(!this.el.panelMessagesContainer.querySelector(`#_${data.id}`)) {
                
-
-
-
                if(!me) {
                   doc.ref.set({
                      status: 'read',
@@ -316,6 +359,14 @@ export default class WhatsAppController {
    }
 
    initEvents() {
+      window.addEventListener('focus', e => {
+         this._active = true;
+      });
+
+      window.addEventListener('blur', e => {
+         this._active = false;
+      });
+
       this.el.inputSearchContacts.on('keyup', e => {
          if(this.el.inputSearchContacts.value.length > 0) {
             this.el.inputSearchContactsPlaceholder.hide();
@@ -359,6 +410,18 @@ export default class WhatsAppController {
 
       this.el.photoContainerEditProfile.on('click', e => {
          this.el.inputProfilePhoto.click();
+      });
+
+      this.el.inputProfilePhoto.on('change', e => {
+         if(this.el.inputProfilePhoto.files.length > 0) {
+            const file = this.el.inputProfilePhoto.files[0];
+
+            User.uploadPhotoProfile(file, this._user.email).then(urlPhoto => {
+               this._user.photo = urlPhoto;
+
+               this._user.save();
+            });
+         }
       });
 
       this.el.inputNamePanelEditProfile.on('keypress', e => {
@@ -680,7 +743,18 @@ export default class WhatsAppController {
       });
 
       this.el.btnFinishMicrophone.on('click', e => {
+         this._microphoneController.on('recorded', (file, metadata) => {
+            Message.sendAudio(
+               this._contactActive.chatId,
+               this._user.email,
+               file,
+               metadata,
+               this._user.photo,
+            );
+         });
+
          this.closeRecordMicrophone();
+
          this.el.btnSendMicrophone.show();
 
          this._microphoneController.stopRecorder();

@@ -59,6 +59,30 @@ export default class User extends Model{
       });
    }
 
+   static uploadPhotoProfile(file, from) {
+      return new Promise((resolve, reject) => {
+         const time = Date.now();
+
+         const uploadTask = Firebase.hd().ref(from).child(`profile_photo_${time}.image`).put(file);
+
+         uploadTask.on('state_changed', 
+            (progress) => {
+               console.log(`uploading - ${progress.bytesTransferred}`);
+            },
+            (err) => {
+               console.error(`Error => ${err.message}`);
+               reject();
+            },
+            () => {
+               Firebase.hd().ref(from).child(`profile_photo_${time}.image`)
+                  .getDownloadURL().then(url => {
+                     resolve(url);
+                  });
+            },
+         );
+      });
+   }
+
    get name() {
       return this._data.name;
    }
